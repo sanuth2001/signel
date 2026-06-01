@@ -73,18 +73,33 @@ async function fetchWithRetry(url, retries = 1) {
   }
 }
 
+async function fetchLivePriceFromBinance(coin) {
+  try {
+    const symbol = {
+      BTC: 'BTCUSDT',
+      ETH: 'ETHUSDT',
+      SOL: 'SOLUSDT',
+      BNB: 'BNBUSDT',
+    }[coin.toUpperCase()] || `${coin.toUpperCase()}USDT`
+    const res = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`, { timeout: 4000 })
+    return parseFloat(res.data?.price)
+  } catch (e) {
+    console.warn(`[price] Binance live price fetch failed for ${coin}: ${e.message}`)
+    return null
+  }
+}
+
 export async function fetchPriceData(coin = 'BTC') {
   const coinId = COIN_IDS[coin.toUpperCase()] || 'bitcoin'
   try {
-    // Use market_chart with daily interval — gives full OHLCV for 90 days (90 candles)
-    // This is more reliable than /ohlc which CoinGecko throttles to weekly on free tier
-    const [chartRaw90, chartRaw7] = await Promise.all([
+    // Fetch CoinGecko chart data and live Binance price in parallel
+    const [chartRaw90, chartRaw7, livePrice] = await Promise.all([
       fetchWithRetry(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=90&interval=daily`),
       fetchWithRetry(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=7&interval=hourly`),
+      fetchLivePriceFromBinance(coin),
     ])
 
     // Build daily OHLCV from price + volume arrays
-    // market_chart gives: prices[], market_caps[], total_volumes[] — each [timestamp, value]
     const prices90 = chartRaw90.prices || []
     const volumes90 = chartRaw90.total_volumes || []
 
@@ -93,7 +108,6 @@ export async function fetchPriceData(coin = 'BTC') {
     for (let i = 0; i < prices90.length; i++) {
       const [ts, closePrice] = prices90[i]
       const open = i > 0 ? prices90[i - 1][1] : closePrice
-      // Estimate high/low with small realistic range
       const range = Math.abs(closePrice - open) * 1.5 + closePrice * 0.003
       const high = Math.max(open, closePrice) + range * Math.random()
       const low = Math.min(open, closePrice) - range * Math.random()
@@ -126,11 +140,30 @@ export async function fetchPriceData(coin = 'BTC') {
       hourly.volume.push(volumes7[i]?.[1] || closePrice * 1e5)
     }
 
-    const currentPrice = daily.close[daily.close.length - 1]
+    // Inject live price into the last element of both daily and hourly series
+    let currentPrice = daily.close[daily.close.length - 1]
+    if (livePrice !== null && livePrice !== undefined) {
+      currentPrice = livePrice
+      
+      // Update last daily candle
+      if (daily.close.length > 0) {
+        daily.close[daily.close.length - 1] = livePrice
+        if (livePrice > daily.high[daily.high.length - 1]) daily.high[daily.high.length - 1] = livePrice
+        if (livePrice < daily.low[daily.low.length - 1]) daily.low[daily.low.length - 1] = livePrice
+      }
+      
+      // Update last hourly candle
+      if (hourly.close.length > 0) {
+        hourly.close[hourly.close.length - 1] = livePrice
+        if (livePrice > hourly.high[hourly.high.length - 1]) hourly.high[hourly.high.length - 1] = livePrice
+        if (livePrice < hourly.low[hourly.low.length - 1]) hourly.low[hourly.low.length - 1] = livePrice
+      }
+    }
+
     const prevPrice = daily.close[daily.close.length - 2]
     const priceChange24h = parseFloat((((currentPrice - prevPrice) / prevPrice) * 100).toFixed(2))
 
-    console.log(`[price] ${coin} — ${daily.close.length} daily candles, ${hourly.close.length} hourly candles`)
+    console.log(`[price] ${coin} — ${daily.close.length} daily candles, ${hourly.close.length} hourly candles | Live: $${currentPrice.toLocaleString()}`)
 
     return {
       coin: coin.toUpperCase(),

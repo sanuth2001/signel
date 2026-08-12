@@ -1,5 +1,9 @@
 import { getSignalById, updateOutcome, savePostMortem } from '../../../lib/database/db.js'
 import { analyzePostMortem } from '../../../lib/claude/postmortem.js'
+import { sendOutcomeConfirmation } from '../../../lib/notifications/telegram.js'
+
+// Win milestone tracking
+const WIN_MILESTONES = [3, 5, 10, 25, 50]
 
 export async function POST(request) {
   try {
@@ -25,8 +29,26 @@ export async function POST(request) {
       savePostMortem(id, postMortem)
     }
 
+    // Win milestone notification
+    let winMilestone = null
+    if (outcome === 'win') {
+      try {
+        const { getDb } = await import('../../../lib/database/db.js')
+        const wins = getDb().prepare('SELECT COUNT(*) as count FROM signals WHERE outcome = "win"').get()
+        const winCount = wins.count
+        if (WIN_MILESTONES.includes(winCount)) {
+          winMilestone = winCount
+        }
+      } catch (e) {}
+    }
+
+    // Telegram notification for outcome (Prompt 34)
+    if (pnlPercent !== null) {
+      sendOutcomeConfirmation(signal, outcome, pnlPercent).catch(e => console.warn('[telegram] outcome notify failed:', e.message))
+    }
+
     const updated = getSignalById(id)
-    return Response.json({ success: true, signal: updated, postMortem })
+    return Response.json({ success: true, signal: updated, postMortem, winMilestone })
   } catch (err) {
     console.error('Outcome update error:', err.message)
     return Response.json({ error: err.message }, { status: 500 })

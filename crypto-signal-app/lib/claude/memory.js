@@ -90,3 +90,91 @@ if (process.argv[2] === 'test') {
   ]
   generateStrategyInsights(mockSignals).then(r => console.log(JSON.stringify(r, null, 2)))
 }
+
+// Prompt 30 — Weekly Performance Report
+export async function generateWeeklyReport(allSignals) {
+  const oneWeekAgo = Date.now() - 7 * 24 * 3600 * 1000
+  const weekSignals = allSignals.filter(s => new Date(s.timestamp).getTime() >= oneWeekAgo)
+
+  if (weekSignals.length === 0) {
+    return {
+      weeklyGrade: 'N/A',
+      summary: { signalsFired: 0, wins: 0, losses: 0, pending: 0, winRate: 0, avgConfidence: 0 },
+      bestTrade: null,
+      worstTrade: null,
+      insights: ['No signals recorded this week. Use the system more to see insights.'],
+      recommendations: ['Generate at least 5 signals per week to see meaningful patterns.'],
+      motivationalNote: 'Every journey starts with the first step. Start trading!',
+      generatedAt: new Date().toISOString(),
+    }
+  }
+
+  const completed = weekSignals.filter(s => s.outcome && s.outcome !== 'pending')
+  const wins = completed.filter(s => s.outcome === 'win')
+  const losses = completed.filter(s => s.outcome === 'loss')
+  const winRate = completed.length > 0 ? parseFloat(((wins.length / completed.length) * 100).toFixed(1)) : 0
+  const avgConfidence = weekSignals.length > 0
+    ? parseFloat((weekSignals.reduce((s, x) => s + (x.confidence || 0), 0) / weekSignals.length).toFixed(1))
+    : 0
+
+  const summary = {
+    signalsFired: weekSignals.length,
+    wins: wins.length,
+    losses: losses.length,
+    pending: weekSignals.length - completed.length,
+    winRate,
+    avgConfidence,
+  }
+
+  const bestTrade = wins.length > 0 ? wins.sort((a, b) => (b.pnlPercent || 0) - (a.pnlPercent || 0))[0] : null
+  const worstTrade = losses.length > 0 ? losses.sort((a, b) => (a.pnlPercent || 0) - (b.pnlPercent || 0))[0] : null
+
+  try {
+    const prompt = `Analyze this week's crypto trading signal performance and generate a report.
+
+Summary: ${JSON.stringify(summary)}
+Signals: ${JSON.stringify(weekSignals.slice(0, 20).map(s => ({ signal: s.signal, confidence: s.confidence, outcome: s.outcome, pnlPercent: s.pnlPercent, coin: s.coin, regime: s.regime })))}
+
+Return ONLY this JSON:
+{
+  "weeklyGrade": "A" or "B" or "C" or "D",
+  "insights": ["3-5 specific observations about this week's performance"],
+  "recommendations": ["2-3 concrete changes to improve next week"],
+  "motivationalNote": "1 sentence encouragement or honest feedback"
+}`
+
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 600,
+      system: 'You are a quantitative trading performance coach reviewing weekly signal stats.',
+      messages: [{ role: 'user', content: prompt }],
+    })
+    const text = message.content[0]?.text || ''
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    const ai = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+
+    return {
+      weeklyGrade: ai.weeklyGrade || (winRate >= 60 ? 'B' : 'C'),
+      summary,
+      bestTrade,
+      worstTrade,
+      insights: ai.insights || [],
+      recommendations: ai.recommendations || [],
+      motivationalNote: ai.motivationalNote || '',
+      generatedAt: new Date().toISOString(),
+    }
+  } catch (err) {
+    console.error('generateWeeklyReport error:', err.message)
+    return {
+      weeklyGrade: winRate >= 70 ? 'A' : winRate >= 55 ? 'B' : winRate >= 40 ? 'C' : 'D',
+      summary,
+      bestTrade,
+      worstTrade,
+      insights: [`Win rate: ${winRate}%`, `Avg confidence: ${avgConfidence}%`, completed.length === 0 ? 'No completed trades yet' : `${wins.length}W / ${losses.length}L`],
+      recommendations: ['Continue using the system daily for pattern insights'],
+      motivationalNote: winRate >= 55 ? 'Great week! Keep it up.' : 'Every loss is a learning opportunity.',
+      generatedAt: new Date().toISOString(),
+    }
+  }
+}
+

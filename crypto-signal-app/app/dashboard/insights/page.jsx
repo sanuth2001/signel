@@ -1,145 +1,154 @@
 'use client'
-import { useState, useEffect } from 'react'
+// Prompt 30 — Weekly Performance Report / Insights Page
+import React, { useState, useEffect } from 'react'
+import { formatPercent } from '../../../lib/utils/formatters'
+
+const GRADE_CONFIG = {
+  'A': { color: '#22c55e', bg: '#22c55e18', label: 'Excellent', icon: '🏆' },
+  'B': { color: '#3b82f6', bg: '#3b82f618', label: 'Good', icon: '🟢' },
+  'C': { color: '#eab308', bg: '#eab30818', label: 'Average', icon: '🟡' },
+  'D': { color: '#ef4444', bg: '#ef444418', label: 'Needs Work', icon: '🔴' },
+  'N/A': { color: '#6b7280', bg: '#6b728018', label: 'No Data', icon: '📊' },
+}
 
 export default function InsightsPage() {
-  const [loading, setLoading] = useState(false)
-  const [data, setData] = useState(null)
+  const [report, setReport] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  const fetchInsights = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/memory')
-      const json = await res.json()
-      setData(json)
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
+  useEffect(() => {
+    fetch('/api/memory?type=weekly')
+      .then(r => r.json())
+      .then(data => {
+        setReport(data.report)
+        setLoading(false)
+      })
+      .catch(e => {
+        setError(e.message)
+        setLoading(false)
+      })
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Generating weekly report with AI…</p>
+        </div>
+      </div>
+    )
   }
 
-  useEffect(() => { fetchInsights() }, [])
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-center text-red-400">
+          <p className="text-xl mb-2">⚠️ Report generation failed</p>
+          <p className="text-sm text-gray-500">{error}</p>
+        </div>
+      </div>
+    )
+  }
 
-  const insights = data?.insights
+  const grade = report?.weeklyGrade || 'N/A'
+  const gradeConf = GRADE_CONFIG[grade] || GRADE_CONFIG['N/A']
+  const s = report?.summary || {}
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900/80 backdrop-blur-md border-b border-gray-700/30">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <a href="/dashboard" className="text-gray-400 hover:text-white transition-colors">← Dashboard</a>
-            <span className="text-gray-600">/</span>
-            <h1 className="font-black text-white">🧠 AI Strategy Insights</h1>
+    <div className="min-h-screen bg-gray-950 text-white p-6" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Weekly Performance Report</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {report?.generatedAt ? `Generated ${new Date(report.generatedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}` : 'Loading…'}
+            </p>
           </div>
-          <button onClick={fetchInsights} disabled={loading}
-            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
-            {loading ? 'Analyzing...' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-3 text-xs font-bold">
+            <a href="/dashboard" className="text-blue-400 hover:text-blue-300 transition-colors">← Dashboard</a>
+            <span className="text-gray-600">•</span>
+            <a href="/dashboard/smc" className="text-amber-400 hover:text-amber-300 transition-colors">🏦 SMC Supreme</a>
+            <span className="text-gray-600">•</span>
+            <a href="/dashboard/fvg" className="text-amber-400 hover:text-amber-300 transition-colors">⚡ FVG Signals</a>
+          </div>
         </div>
-      </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        {error && <div className="mb-6 p-4 bg-red-900/20 border border-red-700/30 rounded-xl text-red-300 text-sm">{error}</div>}
+        <div className="rounded-2xl border p-6 text-center" style={{ borderColor: gradeConf.color + '40', backgroundColor: gradeConf.bg }}>
+          <div className="text-6xl font-black mb-2" style={{ color: gradeConf.color }}>{grade}</div>
+          <div className="text-lg font-semibold text-gray-200">{gradeConf.icon} {gradeConf.label} Performance</div>
+          {report?.motivationalNote && (
+            <p className="text-gray-400 text-sm mt-3 italic">"{report.motivationalNote}"</p>
+          )}
+        </div>
 
-        {loading && !data && (
-          <div className="space-y-4">
-            {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-2xl bg-gray-800/50 animate-pulse" />)}
-          </div>
-        )}
-
-        {!loading && !data && !error && (
-          <div className="text-center py-16 text-gray-500">No signal history yet. Generate signals to get AI insights.</div>
-        )}
-
-        {insights && (
-          <div className="space-y-6">
-            {/* Overview */}
-            <div className="rounded-2xl border border-gray-700/50 bg-gray-900/80 p-6 backdrop-blur-sm">
-              <h2 className="font-bold text-white text-lg mb-4">Overview</h2>
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className="text-center bg-gray-800/40 rounded-xl p-4">
-                  <div className="text-3xl font-black text-white">{insights.totalTrades || 0}</div>
-                  <div className="text-xs text-gray-400 mt-1">Total Trades</div>
-                </div>
-                <div className="text-center bg-green-900/20 rounded-xl p-4 border border-green-800/20">
-                  <div className="text-3xl font-black text-green-400">{insights.winRate || 0}%</div>
-                  <div className="text-xs text-gray-400 mt-1">Win Rate</div>
-                </div>
-                <div className="text-center bg-blue-900/20 rounded-xl p-4 border border-blue-800/20">
-                  <div className="text-3xl font-black text-blue-400">{data?.totalSignals || 0}</div>
-                  <div className="text-xs text-gray-400 mt-1">Total Signals</div>
-                </div>
-              </div>
-              {insights.summary && (
-                <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-700/20">
-                  <p className="text-gray-300 italic text-sm leading-relaxed">{insights.summary}</p>
-                </div>
-              )}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Signals Fired', value: s.signalsFired || 0, color: '#3b82f6' },
+            { label: 'Win Rate', value: `${s.winRate || 0}%`, color: s.winRate >= 60 ? '#22c55e' : s.winRate >= 40 ? '#eab308' : '#ef4444' },
+            { label: 'Wins / Losses', value: `${s.wins || 0} / ${s.losses || 0}`, color: '#22c55e' },
+            { label: 'Avg Confidence', value: `${s.avgConfidence || 0}%`, color: '#8b5cf6' },
+          ].map(stat => (
+            <div key={stat.label} className="rounded-xl bg-gray-900/80 border border-gray-700/30 p-4 text-center">
+              <div className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</div>
+              <div className="text-gray-500 text-xs mt-1">{stat.label}</div>
             </div>
+          ))}
+        </div>
 
-            {/* Best / Worst Setups */}
-            <div className="grid grid-cols-2 gap-6">
-              <div className="rounded-2xl border border-green-700/30 bg-green-900/10 p-5">
-                <h3 className="font-bold text-green-300 mb-3">✅ Best Setups</h3>
-                {insights.bestSetups?.length > 0 ? insights.bestSetups.map((s, i) => (
-                  <div key={i} className="bg-green-900/20 rounded-xl p-3 mb-2">
-                    <div className="text-sm text-white font-medium">{s.condition}</div>
-                    <div className="text-xs text-green-400 mt-1">{s.winRate}% win rate · {s.count} trades</div>
-                  </div>
-                )) : <p className="text-gray-500 text-sm">Not enough data</p>}
-              </div>
-              <div className="rounded-2xl border border-red-700/30 bg-red-900/10 p-5">
-                <h3 className="font-bold text-red-300 mb-3">❌ Worst Setups</h3>
-                {insights.worstSetups?.length > 0 ? insights.worstSetups.map((s, i) => (
-                  <div key={i} className="bg-red-900/20 rounded-xl p-3 mb-2">
-                    <div className="text-sm text-white font-medium">{s.condition}</div>
-                    <div className="text-xs text-red-400 mt-1">{s.winRate}% win rate · {s.count} trades</div>
-                  </div>
-                )) : <p className="text-gray-500 text-sm">Not enough data</p>}
-              </div>
-            </div>
-
-            {/* Recommendations */}
-            {insights.recommendations?.length > 0 && (
-              <div className="rounded-2xl border border-blue-700/30 bg-blue-900/10 p-6">
-                <h3 className="font-bold text-blue-300 mb-4">💡 AI Recommendations</h3>
-                <div className="space-y-3">
-                  {insights.recommendations.map((r, i) => (
-                    <div key={i} className="flex gap-3 bg-blue-900/20 rounded-xl p-4">
-                      <span className="text-blue-400 font-black text-sm mt-0.5">{i + 1}</span>
-                      <div>
-                        <div className="text-sm text-white font-medium">{r.change}</div>
-                        <div className="text-xs text-blue-300/70 mt-1">{r.expectedImprovement}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        {(report?.bestTrade || report?.worstTrade) && (
+          <div className="grid grid-cols-2 gap-4">
+            {report.bestTrade && (
+              <div className="rounded-xl bg-green-900/20 border border-green-700/30 p-4">
+                <div className="text-xs text-green-400 uppercase tracking-wider mb-2">Best Trade</div>
+                <div className="text-2xl font-bold text-green-400">+{report.bestTrade.pnlPercent?.toFixed(2)}%</div>
+                <div className="text-sm text-gray-300">{report.bestTrade.coin} {report.bestTrade.signal}</div>
+                <div className="text-xs text-gray-500 mt-1">{report.bestTrade.regime?.replace('_', ' ')}</div>
               </div>
             )}
-
-            {/* Market Condition Breakdown */}
-            {insights.marketConditionBreakdown && (
-              <div className="rounded-2xl border border-gray-700/50 bg-gray-900/80 p-6">
-                <h3 className="font-bold text-white mb-4">📊 Win Rate by Market Condition</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  {Object.entries(insights.marketConditionBreakdown).map(([condition, stats]) => (
-                    <div key={condition} className="bg-gray-800/40 rounded-xl p-4">
-                      <div className="text-sm font-medium text-white capitalize mb-2">{condition}</div>
-                      <div className="text-2xl font-black text-white">{stats.winRate || 0}%</div>
-                      <div className="text-xs text-gray-400">{stats.count || 0} trades</div>
-                      <div className="mt-2 h-1.5 bg-gray-700 rounded-full">
-                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${stats.winRate || 0}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {report.worstTrade && (
+              <div className="rounded-xl bg-red-900/20 border border-red-700/30 p-4">
+                <div className="text-xs text-red-400 uppercase tracking-wider mb-2">Worst Trade</div>
+                <div className="text-2xl font-bold text-red-400">{report.worstTrade.pnlPercent?.toFixed(2)}%</div>
+                <div className="text-sm text-gray-300">{report.worstTrade.coin} {report.worstTrade.signal}</div>
+                <div className="text-xs text-gray-500 mt-1">{report.worstTrade.regime?.replace('_', ' ')}</div>
               </div>
             )}
           </div>
         )}
-      </main>
+
+        {report?.insights?.length > 0 && (
+          <div className="rounded-2xl bg-gray-900/80 border border-gray-700/30 p-6">
+            <h2 className="text-sm font-bold text-gray-200 uppercase tracking-wider mb-4">🧠 AI Insights</h2>
+            <div className="space-y-3">
+              {report.insights.map((insight, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 text-xs flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                  <p className="text-gray-300 text-sm">{insight}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {report?.recommendations?.length > 0 && (
+          <div className="rounded-2xl bg-gray-900/80 border border-amber-700/30 p-6">
+            <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-4">⚡ Recommendations</h2>
+            <div className="space-y-3">
+              {report.recommendations.map((rec, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="text-amber-400 mt-0.5">→</span>
+                  <p className="text-gray-300 text-sm">{rec}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className="text-center text-xs text-gray-600 pb-4">
+          Reports are AI-generated based on your historical signal data. Not financial advice.
+        </p>
+      </div>
     </div>
   )
 }

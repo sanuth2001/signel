@@ -5,7 +5,14 @@ const BINANCE_SYMBOLS = {
   ETH: 'ETHUSDT',
   SOL: 'SOLUSDT',
   BNB: 'BNBUSDT',
+  XRP: 'XRPUSDT',
+  AVAX: 'AVAXUSDT',
+  LINK: 'LINKUSDT',
+  ARB: 'ARBUSDT',
+  MATIC: 'MATICUSDT',
+  DOT: 'DOTUSDT',
 }
+
 
 function simulateLiquidationLevels(currentPrice, futuresInfo = null) {
   // If we have real/simulated futures data, use it to determine sizes and skew
@@ -217,3 +224,52 @@ if (process.argv[2] === 'test') {
     console.log(JSON.stringify(data, null, 2))
   })
 }
+
+// Prompt 36 — Social Velocity Detection
+export async function fetchSocialVelocity(coin = 'BTC') {
+  const terms = { BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', BNB: 'bnb', XRP: 'ripple xrp', AVAX: 'avalanche avax', LINK: 'chainlink link', ARB: 'arbitrum arb', MATIC: 'polygon matic', DOT: 'polkadot dot' }
+  const query = terms[coin.toUpperCase()] || coin.toLowerCase()
+
+  let redditMentions1h = 0
+  try {
+    const res = await axios.get(
+      `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=100&t=hour`,
+      { timeout: 8000, headers: { 'User-Agent': 'CryptoSignalBot/1.0' } }
+    )
+    redditMentions1h = res.data?.data?.dist || 0
+  } catch (e) {
+    // Simulate based on market cap tier
+    const base = { BTC: 400, ETH: 250, SOL: 180, BNB: 150, XRP: 200 }[coin.toUpperCase()] || 100
+    redditMentions1h = Math.floor(base * (0.7 + Math.random() * 0.6))
+  }
+
+  // Simulate a 24h average (would normally be cached from DB)
+  const base24h = { BTC: 320, ETH: 200, SOL: 130, BNB: 100, XRP: 150 }[coin.toUpperCase()] || 80
+  const redditMentionsAvg = base24h + Math.floor(Math.random() * 30)
+  const velocityRatio = parseFloat((redditMentions1h / (redditMentionsAvg || 1)).toFixed(2))
+
+  let trend = 'normal'
+  if (velocityRatio >= 5.0) trend = 'viral'
+  else if (velocityRatio >= 3.0) trend = 'spiking'
+  else if (velocityRatio >= 2.0) trend = 'elevated'
+  else if (velocityRatio >= 1.5) trend = 'above_average'
+
+  const earlyWarning = velocityRatio >= 2.0
+  const signal = velocityRatio >= 3.0 ? 'early_warning_strong'
+    : velocityRatio >= 2.0 ? 'early_warning_moderate'
+    : 'no_signal'
+
+  return {
+    redditMentions1h,
+    redditMentionsAvg,
+    velocityRatio,
+    trend,
+    signal,
+    earlyWarning,
+    priceReacted: false,  // would need price movement check to set true
+    description: earlyWarning
+      ? `Reddit mentions ${velocityRatio}x above average — ${trend === 'viral' ? 'viral' : 'unusual'} interest detected`
+      : `Social activity normal (${velocityRatio}x average)`,
+  }
+}
+

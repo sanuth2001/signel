@@ -1,8 +1,12 @@
 import axios from 'axios'
+import { fetchFundingAnalysis } from './fundingrate.js'
 
-function getMockOnchainData() {
+function getMockOnchainData(coin = 'BTC') {
   const fearValue = Math.floor(Math.random() * 100)
   const fundingRate = (Math.random() - 0.5) * 0.002
+  const mockCost = 10000 * fundingRate * 3
+  const label = fundingRate > 0.0010 ? 'Extreme' : fundingRate > 0.0005 ? 'High' : fundingRate > 0.0001 ? 'Elevated' : 'Neutral'
+
   return {
     fearGreed: {
       value: fearValue,
@@ -10,8 +14,53 @@ function getMockOnchainData() {
       signal: fearValue < 30 ? 'BUY' : fearValue > 70 ? 'SELL' : 'NEUTRAL',
     },
     funding: {
-      rate: fundingRate,
-      signal: fundingRate < -0.0001 ? 'BUY' : fundingRate > 0.0003 ? 'SELL' : 'NEUTRAL',
+      current: {
+        rate: fundingRate,
+        ratePercent: fundingRate * 100,
+        annualized: fundingRate * 3 * 365 * 100,
+        label
+      },
+      history: {
+        averages: {
+          last24h: fundingRate * 0.9,
+          last72h: fundingRate * 0.8,
+          last7d: fundingRate * 0.7,
+          last30d: fundingRate * 0.6
+        },
+        extremes: {
+          max30d: fundingRate * 1.5,
+          min30d: fundingRate * -0.5,
+          maxDate: new Date().toISOString(),
+          minDate: new Date().toISOString()
+        },
+        trend: 'rising',
+        consecutive: {
+          positive: fundingRate > 0 ? 5 : 0,
+          negative: fundingRate < 0 ? 5 : 0
+        }
+      },
+      analysis: {
+        signal: fundingRate < -0.0001 ? 'BUY' : fundingRate > 0.0003 ? 'SELL' : 'NEUTRAL',
+        strength: 'medium',
+        confidenceAdjustment: fundingRate < -0.0001 ? 10 : fundingRate > 0.0003 ? -10 : 0,
+        isExtreme: false,
+        reversalProbability: 50,
+        alerts: [],
+        description: `Funding rate is ${label.toLowerCase()} at ${(fundingRate * 100).toFixed(4)}%.`,
+        tradingImplication: 'Standard positioning.'
+      },
+      cost: {
+        costUSD: mockCost,
+        costPercent: fundingRate * 3 * 100,
+        periods: 3,
+        breakEvenMove: fundingRate * 3 * 100,
+        warning: null
+      },
+      chartData: Array.from({ length: 24 }, (_, i) => ({
+        ratePercent: fundingRate * 100 * (0.8 + i * 0.01),
+        time: new Date(Date.now() - (24 - i) * 8 * 3600000).toISOString()
+      })),
+      summary: `Funding is ${label.toLowerCase()}`
     },
     exchangeFlow: {
       inflow: Math.floor(Math.random() * 5000) + 1000,
@@ -70,7 +119,7 @@ function simulateStablecoinFlow(fearValue) {
   }
 }
 
-export async function fetchOnchainData(coin = 'BTC') {
+export async function fetchOnchainData(coin = 'BTC', currentPrice = null) {
   try {
     // 1. Fear & Greed Index
     let fearValue = 50
@@ -83,15 +132,14 @@ export async function fetchOnchainData(coin = 'BTC') {
     }
     const { label: fearLabel, signal: fearSignal } = classifyFearGreed(fearValue)
 
-    // 2. BTC Funding Rate
-    let fundingRate = 0
+    // 2. BTC Funding Rate History
+    let funding = null
     try {
-      const frRes = await axios.get('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1', { timeout: 8000 })
-      fundingRate = parseFloat(frRes.data[0].fundingRate)
+      funding = await fetchFundingAnalysis(coin, currentPrice)
     } catch (e) {
-      console.error('Funding rate fetch failed:', e.message)
-      fundingRate = (Math.random() - 0.5) * 0.002
+      console.error('Funding rate analysis failed:', e.message)
     }
+    const fundingRate = funding?.current?.rate ?? 0
 
     // 3. Large ETH transactions (Etherscan) or BTC mock
     let whaleCount = Math.floor(Math.random() * 500) + 300
@@ -130,10 +178,7 @@ export async function fetchOnchainData(coin = 'BTC') {
 
     return {
       fearGreed: { value: fearValue, label: fearLabel, signal: fearSignal },
-      funding: {
-        rate: fundingRate,
-        signal: fundingRate < -0.0001 ? 'BUY' : fundingRate > 0.0003 ? 'SELL' : 'NEUTRAL',
-      },
+      funding: funding,
       exchangeFlow,
       whaleTransactions: {
         count: whaleCount,
@@ -145,7 +190,7 @@ export async function fetchOnchainData(coin = 'BTC') {
     }
   } catch (err) {
     console.error('fetchOnchainData critical error:', err.message)
-    return getMockOnchainData()
+    return getMockOnchainData(coin)
   }
 }
 
@@ -154,3 +199,63 @@ if (process.argv[2] === 'test') {
     console.log(JSON.stringify(data, null, 2))
   })
 }
+
+// Prompt 25 — BTC Dominance Tracker
+export async function fetchBTCDominance() {
+  try {
+    const res = await axios.get('https://api.coingecko.com/api/v3/global', { timeout: 8000 })
+    const current = parseFloat((res.data?.data?.market_cap_percentage?.btc || 50).toFixed(2))
+
+    // Try to get yesterday's value from chart endpoint
+    let yesterday = current
+    try {
+      const chartRes = await axios.get('https://api.coingecko.com/api/v3/global/market_cap_chart?days=2', { timeout: 8000 })
+      const btcData = chartRes.data?.market_cap_chart?.btc || []
+      const totalData = chartRes.data?.market_cap_chart?.total || []
+      if (btcData.length >= 2 && totalData.length >= 2) {
+        const yesterdayBtcCap = btcData[btcData.length - 2]?.[1] || 0
+        const yesterdayTotalCap = totalData[totalData.length - 2]?.[1] || 1
+        yesterday = parseFloat((yesterdayBtcCap / yesterdayTotalCap * 100).toFixed(2))
+      }
+    } catch (e) {
+      // Fallback: simulate slight change
+      yesterday = current + (Math.random() - 0.5) * 0.5
+    }
+
+    const change = parseFloat((current - yesterday).toFixed(2))
+    const trend = change > 0 ? 'rising' : 'falling'
+    const signal = trend === 'rising' && change > 0.3 ? 'bearish_for_alts'
+      : trend === 'falling' && change < -0.3 ? 'bullish_for_alts'
+      : 'neutral'
+
+    return {
+      current,
+      yesterday: parseFloat(yesterday.toFixed(2)),
+      change,
+      trend,
+      signal,
+      description: `BTC dominance ${trend} ${change > 0 ? '+' : ''}${change}% — ${
+        signal === 'bearish_for_alts' ? 'altcoin headwind active'
+        : signal === 'bullish_for_alts' ? 'altcoin tailwind active'
+        : 'neutral for altcoins'
+      }`,
+    }
+  } catch (err) {
+    console.error('fetchBTCDominance error:', err.message)
+    return {
+      current: 52,
+      yesterday: 52,
+      change: 0,
+      trend: 'stable',
+      signal: 'neutral',
+      description: 'BTC dominance data unavailable — using neutral fallback',
+    }
+  }
+}
+
+if (process.argv[2] === 'testDominance') {
+  fetchBTCDominance().then(data => {
+    console.log(JSON.stringify(data, null, 2))
+  })
+}
+

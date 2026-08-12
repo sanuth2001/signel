@@ -1,0 +1,114 @@
+{
+  "meta": {
+    "builtAt": "2026-08-03T10:01:30.436Z",
+    "coinsScanned": 10,
+    "coinList": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "BNB",
+      "XRP",
+      "AVAX",
+      "LINK",
+      "ARB",
+      "MATIC",
+      "DOT"
+    ],
+    "totalWindows": 2665,
+    "candlesPerCoin": 500,
+    "windowSize": 30,
+    "lookforward": 20
+  },
+  "patternStats": {
+    "Bull Flag": {
+      "detections": 12,
+      "completionRate": 1,
+      "winRatePercent": 100,
+      "avgMovePercent": 19.58,
+      "avgCandlesToComplete": 5,
+      "falseBreakoutRate": 0,
+      "throwbackRate": 0.8333
+    },
+    "Bear Flag": {
+      "detections": 13,
+      "completionRate": 0.4615,
+      "winRatePercent": 46.2,
+      "avgMovePercent": 12.27,
+      "avgCandlesToComplete": 11,
+      "falseBreakoutRate": 0,
+      "throwbackRate": 1.8333
+    },
+    "Double Bottom": {
+      "detections": 715,
+      "completionRate": 0.4378,
+      "winRatePercent": 43.8,
+      "avgMovePercent": 8.9,
+      "avgCandlesToComplete": 10,
+      "falseBreakoutRate": 0.1022,
+      "throwbackRate": 0.7093
+    },
+    "Double Top": {
+      "detections": 526,
+      "completionRate": 0.5399,
+      "winRatePercent": 54,
+      "avgMovePercent": 11.53,
+      "avgCandlesToComplete": 9,
+      "falseBreakoutRate": 0,
+      "throwbackRate": 0.0387
+    },
+    "Head and Shoulders Top": {
+      "detections": 178,
+      "completionRate": 0.3146,
+      "winRatePercent": 31.5,
+      "avgMovePercent": 7.94,
+      "avgCandlesToComplete": 11,
+      "falseBreakoutRate": 0.0357,
+      "throwbackRate": 1.4464
+    },
+    "Ascending Triangle": {
+      "detections": 44,
+      "completionRate": 0.6136,
+      "winRatePercent": 61.4,
+      "avgMovePercent": 9.46,
+      "avgCandlesToComplete": 11,
+      "falseBreakoutRate": 0,
+      "throwbackRate": 0.7407
+    },
+    "Descending Triangle": {
+      "detections": 40,
+      "completionRate": 0.175,
+      "winRatePercent": 17.5,
+      "avgMovePercent": 4.7,
+      "avgCandlesToComplete": 16,
+      "falseBreakoutRate": 0,
+      "throwbackRate": 3.2857
+    },
+    "Symmetric Triangle": {
+      "detections": 441,
+      "completionRate": 1,
+      "winRatePercent": 100,
+      "avgMovePercent": 18.49,
+      "avgCandlesToComplete": 3,
+      "falseBreakoutRate": 0,
+      "throwbackRate": 0.5374
+    },
+    "Cup and Handle": {
+      "detections": 476,
+      "completionRate": 0.6029,
+      "winRatePercent": 60.3,
+      "avgMovePercent": 10.68,
+      "avgCandlesToComplete": 10,
+      "falseBreakoutRate": 0.0767,
+      "throwbackRate": 0.9965
+    },
+    "Pipe Bottom": {
+      "detections": 220,
+      "completionRate": 0.3864,
+      "winRatePercent": 38.6,
+      "avgMovePercent": 6.91,
+      "avgCandlesToComplete": 10,
+      "falseBreakoutRate": 0,
+      "throwbackRate": 0
+    }
+  }
+}

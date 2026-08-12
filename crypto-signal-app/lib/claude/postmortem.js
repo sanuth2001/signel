@@ -4,6 +4,17 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function analyzePostMortem(signalRecord, marketDataAtClose) {
   try {
+    let visionAnalysis = null
+    try {
+      if (signalRecord.visionAnalysis) {
+        visionAnalysis = JSON.parse(signalRecord.visionAnalysis)
+      }
+    } catch (e) {
+      console.warn('Postmortem parse visionAnalysis error:', e.message)
+    }
+
+    const visionSection = visionAnalysis ? `\n## VISION ANALYSIS AT SIGNAL TIME:\n- Daily pattern seen: ${visionAnalysis.daily?.pattern || 'None'}\n- Visual bias: ${visionAnalysis.daily?.bias || 'N/A'}\n- Vision confidence: ${visionAnalysis.daily?.confidence || 0}%\n- Pattern confirmed by both methods: ${visionAnalysis.visionConfirmed || false}\n\nQuestions to analyze:\n- Was the visually detected pattern correct?\n- Did price follow the trader action recommendation?\n- Was the visual bias accurate?\n- Did vision-detected support/resistance levels hold?` : ''
+
     const prompt = `You are reviewing a failed crypto trade. Be specific, actionable, and honest.
 
 ## Original Signal
@@ -17,6 +28,7 @@ export async function analyzePostMortem(signalRecord, marketDataAtClose) {
 
 ## Indicators at Signal Time
 ${signalRecord.indicators ? JSON.stringify(JSON.parse(signalRecord.indicators || '{}'), null, 2) : 'Not available'}
+${visionSection}
 
 ## Outcome
 - Close Price: $${marketDataAtClose?.closePrice || signalRecord.closePrice}

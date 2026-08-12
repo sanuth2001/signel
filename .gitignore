@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Environment variables & secrets (NEVER COMMIT)
+.env*
+!.env.example
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+
+# SQLite databases & logs
+*.db
+*.db-shm
+*.db-wal
+logs/
+*.log

@@ -1,3 +1,5 @@
+import { getCurrentSession } from './sessions.js'
+
 export function detectRegime(priceData, indicators, onchainData) {
   const { daily, hourly } = priceData || {}
   const dInd = indicators?.daily || {}
@@ -75,8 +77,38 @@ export function detectRegime(priceData, indicators, onchainData) {
   return { regime, scores, currentPrice, ema200, ema50, rsi, bbWidth, volumeRatio, h4Change, isWeekendNight }
 }
 
-export function isRegimeTradeable(regimeData) {
+export function isRegimeTradeable(regimeData, orderBook) {
   const { regime, h4Change, bbWidth, volumeRatio } = regimeData || {}
+
+  const session = getCurrentSession()
+
+  // Dead zone check first
+  if (session.name === "Dead Zone") {
+    return {
+      tradeable: false,
+      regime: 'low_liquidity',
+      reason: 'Dead zone (21:00-00:00 UTC) — wide spreads and low volume suspend all signals',
+      recommendedAction: 'Wait for active trading session',
+      expectedDuration: 'Until Asia session opens',
+      accuracy: 30,
+      deadZone: true,
+      thinMarket: false,
+    }
+  }
+
+  // Prompt 23 — Thin Market Gate
+  const depthScore = orderBook?.marketDepthScore?.depthScore
+  if (depthScore === 'very thin') {
+    return {
+      tradeable: false,
+      regime: 'low_liquidity',
+      reason: `Order book extremely thin (bid/ask ratio: ${(orderBook?.marketDepthScore?.bidAskRatio || 0).toFixed(2)}) — signals unreliable`,
+      recommendedAction: 'Wait for normal market depth before trading',
+      expectedDuration: 'Until liquidity returns',
+      accuracy: 30,
+      thinMarket: true,
+    }
+  }
 
   const regimeConfig = {
     trending_up: { tradeable: true, accuracy: 82, recommendedAction: 'Enable BUY signals, tighten SELL threshold', expectedDuration: 'Current regime active' },
@@ -88,22 +120,112 @@ export function isRegimeTradeable(regimeData) {
 
   const config = regimeConfig[regime] || regimeConfig.ranging
 
-  const reasons = {
+  let tradeable = config.tradeable
+  let reason = {
     trending_up: 'Uptrend confirmed — signals are reliable in this condition',
     trending_down: 'Downtrend confirmed — short signals are reliable',
     ranging: 'Market is ranging — trend signals unreliable in choppy conditions',
     high_volatility: `High volatility detected (${h4Change?.toFixed(1)}% in 4h) — signals unreliable`,
     low_liquidity: 'Low liquidity period — wide spreads distort signals',
+  }[regime] || 'Unknown regime'
+  let recommendedAction = config.recommendedAction
+  let accuracy = config.accuracy
+  let premiumSetup = false
+
+  // Asia session ranging tradeability override
+  if (session.name === "Asia Session" && regime === "ranging") {
+    tradeable = true
+    reason = "Acceptable — Asia session good for ranging/mean-reversion strategies"
+    recommendedAction = "Enable range-bound trading strategies (mean reversion)"
+    accuracy = 60
+  }
+
+  // London-NY Overlap trending_up premium override
+  if (session.name === "London-NY Overlap" && regime === "trending_up") {
+    premiumSetup = true
+    reason = "Best possible setup active: London-NY Overlap + Strong Uptrend"
+    recommendedAction = "Highly favorable setup — look for high confidence long entries"
+    accuracy = 88
+  }
+
+  // Thin (not very thin) — reduce confidence but don't block
+  const thinWarning = depthScore === 'thin' ? 'Thin order book — reduce position size' : null
+
+  return {
+    tradeable,
+    regime,
+    reason,
+    recommendedAction,
+    expectedDuration: config.expectedDuration,
+    accuracy,
+    thinMarket: depthScore === 'thin',
+    thinMarketWarning: thinWarning,
+    confidenceAdjustment: depthScore === 'thin' ? -15 : 0,
+    premiumSetup,
+  }
+}
+
+// Prompt 35 — Regime Change Detection
+export function compareRegimes(currentRegime, previousRegime) {
+  if (!previousRegime || currentRegime === previousRegime) {
+    return { changed: false, from: previousRegime, to: currentRegime }
+  }
+
+  const majorChanges = [
+    ['ranging', 'trending_up'], ['ranging', 'trending_down'],
+    ['high_volatility', 'trending_up'], ['high_volatility', 'trending_down'],
+    ['trending_up', 'trending_down'], ['trending_down', 'trending_up'],
+  ]
+  const isMajor = majorChanges.some(([a, b]) => (previousRegime === a && currentRegime === b) || (previousRegime === b && currentRegime === a))
+
+  const impactMap = {
+    trending_up: 'Signal quality improving — BUY signals activating',
+    trending_down: 'Signal quality improving — SELL signals activating',
+    ranging: 'System entering conservative mode — signals pausing',
+    high_volatility: 'High volatility detected — signals suspended',
+    low_liquidity: 'Low liquidity period — signals suspended',
+  }
+
+  const recoMap = {
+    trending_up: 'Prepare for BUY signals to activate',
+    trending_down: 'Prepare for SELL signals to activate',
+    ranging: 'Wait for breakout or extreme RSI before trading',
+    high_volatility: 'Sit out — wait for volatility to normalize',
+    low_liquidity: 'Sit out — wait for market hours to resume',
   }
 
   return {
-    tradeable: config.tradeable,
-    regime,
-    reason: reasons[regime] || 'Unknown regime',
-    recommendedAction: config.recommendedAction,
-    expectedDuration: config.expectedDuration,
-    accuracy: config.accuracy,
+    changed: true,
+    from: previousRegime,
+    to: currentRegime,
+    significance: isMajor ? 'major' : 'minor',
+    impact: impactMap[currentRegime] || 'Market conditions changed',
+    recommendation: recoMap[currentRegime] || 'Monitor closely',
   }
+}
+
+// Prompt 25 — BTC Dominance Filter
+export function applyDominanceFilter(coin, signal, dominanceData) {
+  if (!coin || coin.toUpperCase() === 'BTC' || !dominanceData || !signal) return signal
+  const modified = { ...signal }
+  if (!modified.warnings) modified.warnings = []
+
+  if (dominanceData.trend === 'rising' && dominanceData.change > 0.3) {
+    if (modified.signal === 'BUY') {
+      modified.confidence = Math.max(0, (modified.confidence || 0) - 10)
+      modified.warnings.push('BTC dominance rising — altcoin headwind active (-10% confidence)')
+    } else if (modified.signal === 'SELL') {
+      modified.confidence = Math.min(100, (modified.confidence || 0) + 5)
+      modified.reasoning = (modified.reasoning || '') + ' BTC dominance rising adds downside pressure.'
+    }
+  } else if (dominanceData.trend === 'falling' && dominanceData.change < -0.3) {
+    if (modified.signal === 'BUY') {
+      modified.confidence = Math.min(100, (modified.confidence || 0) + 8)
+      modified.reasoning = (modified.reasoning || '') + ' Falling BTC dominance supports altcoin strength.'
+    }
+  }
+
+  return modified
 }
 
 if (process.argv[2] === 'test') {

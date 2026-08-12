@@ -67,3 +67,31 @@ export function formatTimestamp(timestamp) {
   if (!timestamp) return 'N/A'
   return new Date(timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
+
+// Prompt 26 — Position Size Calculator
+export function calculatePositionSize(capital, riskPercent, entryPrice, stopLossPrice) {
+  if (!capital || !riskPercent || !entryPrice || !stopLossPrice) return null
+  const riskAmount = capital * (riskPercent / 100)
+  const stopDistance = Math.abs(entryPrice - stopLossPrice)
+  const stopPercent = stopDistance / entryPrice
+  if (stopDistance === 0) return null
+  const positionSize = riskAmount / stopDistance
+  const positionValue = positionSize * entryPrice
+  const positionPercent = (positionValue / capital) * 100
+  // Expected P&L
+  const riskRewardRatio = 2  // assume 2:1 if we don't have target
+  const potentialWin = riskAmount * riskRewardRatio
+  const potentialWinPercent = (potentialWin / capital) * 100
+
+  return {
+    coinAmount: parseFloat(positionSize.toFixed(6)),
+    usdValue: parseFloat(positionValue.toFixed(2)),
+    portfolioPercent: parseFloat(positionPercent.toFixed(1)),
+    maxLoss: parseFloat(riskAmount.toFixed(2)),
+    maxLossPercent: parseFloat((riskPercent).toFixed(2)),
+    stopDistancePercent: parseFloat((stopPercent * 100).toFixed(2)),
+    potentialWin: parseFloat(potentialWin.toFixed(2)),
+    potentialWinPercent: parseFloat(potentialWinPercent.toFixed(2)),
+  }
+}
+
